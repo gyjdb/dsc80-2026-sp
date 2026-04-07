@@ -58,7 +58,14 @@ def n_prefixes(s, n):
 
 
 def exploded_numbers(ints, n):
-    ...
+    width = len(str(max(ints) + n))
+    results = []
+    for x in ints:
+        nums = []
+        for k in range(x - n, x + n + 1):
+            nums.append(str(k).zfill(width))
+        results.append(" ".join(nums))
+    return results
 
 
 # ---------------------------------------------------------------------
