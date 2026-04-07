@@ -74,7 +74,10 @@ def exploded_numbers(ints, n):
 
 
 def last_chars(fh):
-    ...
+    s = ''
+    for line in fh:
+        s += line.strip()[-1]
+    return s
 
 
 # ---------------------------------------------------------------------
