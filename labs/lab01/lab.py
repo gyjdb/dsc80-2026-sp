@@ -178,4 +178,18 @@ def salary_stats(salary):
 
 
 def parse_malformed(fp):
-    ...
+    rows = []
+    with open(fp) as fh:
+        header = next(fh)
+        for line in fh:
+            line = line.strip().replace('"','')
+            parts = line.split(',')
+            parts = [p for p in parts if p != '']
+            rows.append({
+                'first': parts[0], 
+                'last': parts[1], 
+                'weight': float(parts[2]), 
+                'height': float(parts[3]), 
+                'geo': parts[4] + ',' + parts[5]
+            })
+    return pd.DataFrame(rows)
