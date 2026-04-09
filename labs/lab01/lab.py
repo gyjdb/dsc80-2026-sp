@@ -103,10 +103,9 @@ def filter_cutoff_loop(matrix, cutoff):
     length = matrix.shape[1]
     target = []
     for i in range(length):
-        if(sum(matrix[:, i]) / len(matrix[:, i]) > cutoff):
+        if(sum(matrix[:,i]) / matrix.shape[0] > cutoff):
             target.append(i)
-    return matrix[:, target]
-
+    return matrix[:,target]
 
 # ---------------------------------------------------------------------
 # QUESTION 6
@@ -114,7 +113,7 @@ def filter_cutoff_loop(matrix, cutoff):
 
 
 def filter_cutoff_np(matrix, cutoff):
-    return matrix[:, np.mean(matrix, axis=0) > cutoff]
+    return matrix[:, np.mean(matrix, axis = 0) > cutoff]
 
 
 # ---------------------------------------------------------------------
@@ -123,11 +122,22 @@ def filter_cutoff_np(matrix, cutoff):
 
 
 def growth_rates(A):
-    ...
+    return (np.round((A[1:] - A[:-1]) / A[:-1], 2))
 
+
+# def with_leftover(A):
+#     day = -1
+#     cumulative = np.cumsum(20 % A)
+#     for i in range(len(A)):
+#         if cumulative[i] >= A[i]:
+#             day = i
+#             return day
+#     return day
 def with_leftover(A):
-    ...
-
+    left_over = np.cumsum(20 % A) >= A
+    if left_over.any():
+        return np.argmax(left_over)
+    return -1
 
 # ---------------------------------------------------------------------
 # QUESTION 8
@@ -135,7 +145,31 @@ def with_leftover(A):
 
 
 def salary_stats(salary):
-    ...
+    num_players = salary.shape[0]
+    # num_teams = salary.groupby()['Team'].shape[0]
+    num_teams = salary['Team'].nunique()
+
+    total_salary = salary['Salary'].sum()
+    
+    idx = salary['Salary'].idxmax()
+    highest_salary = salary.loc[idx, 'Player']
+
+    avg_los = np.round(salary[salary['Team'] == 'Los Angeles Lakers']['Salary'].mean(), 2)
+
+    row = salary.sort_values('Salary').iloc[4]
+    fifth_lowest = row['Player'] + ', ' + row['Team']
+
+    names = salary['Player'].str.replace(r'\s+(Jr\.|Sr\.|III|II|IV)$', '', regex = True)
+    duplicates = names.str.split().str[-1].duplicated().any()
+
+    top_team = salary.loc[salary['Salary'].idxmax(), 'Team']
+
+    total_highest = salary[salary['Team'] == top_team]['Salary'].sum()
+
+    return pd.Series({
+        'num_players': num_players, 'num_teams': num_teams, 'total_salary': total_salary, 'highest_salary': highest_salary, 'avg_los': avg_los, 'fifth_lowest': fifth_lowest, 'duplicates': duplicates,
+        'top_team': top_team, 'total_highest': total_highest
+    })
 
 
 # ---------------------------------------------------------------------
