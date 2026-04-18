@@ -182,10 +182,26 @@ def letter_proportions(total):
 
 
 def raw_redemption(final_breakdown, question_numbers):
-    ...
+    all_cols = final_breakdown.columns
     
-def combine_grades(grades, raw_redemption_scores):
-    ...
+    redemption_cols = [all_cols[q] for q in question_numbers]
+    
+    redemption_df = final_breakdown[redemption_cols]
+
+    max_pts = redemption_df.columns.str.extract(r'\((\d+\.?\d*) pts\)')[0].astype(float)
+
+    total_score = redemption_df.sum(axis=1)
+    total_max = max_pts.sum()
+    
+    return pd.DataFrame({
+        'PID': final_breakdown['PID'],
+        'Raw Redemption Score': (total_score / total_max).fillna(0)
+    })
+
+
+def combine_grades(grades, raw_redemption_df):
+
+    return grades.merge(raw_redemption_df, on='PID', how='left')
 
 
 # ---------------------------------------------------------------------
@@ -193,11 +209,35 @@ def combine_grades(grades, raw_redemption_scores):
 # ---------------------------------------------------------------------
 
 
-def z_score(ser):
-    ...
-    
+def z_score(s):
+    return (s - s.mean()) / s.std(ddof=0)
+
+
 def add_post_redemption(grades_combined):
-    ...
+    midterm_raw = grades_combined['Midterm'].fillna(0)
+    midterm_max = grades_combined['Midterm - Max Points']
+    midterm_prop = midterm_raw / midterm_max  # 0到1之间的比例
+
+    midterm_prop_with_nan = grades_combined['Midterm'] / midterm_max
+    
+    midterm_z = z_score(midterm_prop_with_nan)
+    redemption_z = z_score(grades_combined['Raw Redemption Score'])
+
+    midterm_mean = midterm_prop_with_nan.mean()
+    midterm_std = midterm_prop_with_nan.std(ddof=0)
+    
+    redeemed = redemption_z * midterm_std + midterm_mean
+    
+    post_redemption = midterm_prop_with_nan.copy()
+    mask = redemption_z > midterm_z
+    post_redemption[mask] = redeemed[mask]
+    post_redemption = post_redemption.clip(upper=1.0)
+    
+    result = grades_combined.copy()
+    result['Midterm Score Pre-Redemption'] = midterm_prop_with_nan
+    result['Midterm Score Post-Redemption'] = post_redemption
+    
+    return result
 
 
 # ---------------------------------------------------------------------
@@ -206,10 +246,27 @@ def add_post_redemption(grades_combined):
 
 
 def total_points_post_redemption(grades_combined):
-    ...
-        
+    combined = add_post_redemption(grades_combined)
+    
+    original_total = total_points(grades_combined)
+    
+    pre = combined['Midterm Score Pre-Redemption'].fillna(0)
+    post = combined['Midterm Score Post-Redemption'].fillna(0)
+    
+    return original_total - 0.15 * pre + 0.15 * post
+
+
 def proportion_improved(grades_combined):
-    ...
+    before = final_grades(total_points(grades_combined))
+    after = final_grades(total_points_post_redemption(grades_combined))
+    
+    grade_order = {'A': 4, 'B': 3, 'C': 2, 'D': 1, 'F': 0}
+    
+    before_num = before.map(grade_order)
+    after_num = after.map(grade_order)
+    
+    improved = (after_num > before_num).sum()
+    return improved / len(grades_combined)
 
 
 # ---------------------------------------------------------------------
@@ -218,10 +275,32 @@ def proportion_improved(grades_combined):
 
 
 def section_most_improved(grades_analysis):
-    ...
+    grade_order = {'A': 4, 'B': 3, 'C': 2, 'D': 1, 'F': 0}
     
+    pre = grades_analysis['Letter Grade Pre-Redemption'].map(grade_order)
+    post = grades_analysis['Letter Grade Post-Redemption'].map(grade_order)
+    
+    improved = post > pre
+
+    proportion = grades_analysis.groupby('Section')['Letter Grade Pre-Redemption'].transform('count')
+
+    result = grades_analysis.assign(improved=improved).groupby('Section')['improved'].mean()
+    
+    return result.idxmax()
+
+
 def top_sections(grades_analysis, t, n):
-    ...
+    final_score = grades_analysis['Final'].fillna(0) / grades_analysis['Final - Max Points']
+    
+    df = grades_analysis.assign(final_score=final_score)
+
+    def count_above(group):
+        return (group['final_score'] >= t).sum()
+    
+    counts = df.groupby('Section').apply(count_above)
+
+    qualifying = counts[counts >= n].index
+    return np.array(sorted(qualifying))
 
 
 # ---------------------------------------------------------------------
@@ -230,7 +309,21 @@ def top_sections(grades_analysis, t, n):
 
 
 def rank_by_section(grades_analysis):
-    ...
+    def assign_ranks(group):
+        ranked = group.sort_values('Total Points Post-Redemption', ascending=False)
+        ranked = ranked.reset_index(drop=True)
+        ranked['Section Rank'] = ranked.index + 1
+        return ranked
+    
+    ranked_df = grades_analysis.groupby('Section', group_keys=False).apply(assign_ranks)
+    
+    result = ranked_df.pivot(index='Section Rank', columns='Section', values='PID')
+    
+    result = result.fillna('')
+    
+    result = result.reindex(sorted(result.columns), axis=1)
+    
+    return result
 
 
 
@@ -244,4 +337,25 @@ def rank_by_section(grades_analysis):
 
 
 def letter_grade_heat_map(grades_analysis):
-    ...
+    grades = ['A', 'B', 'C', 'D', 'F']
+    sections = sorted(grades_analysis['Section'].unique())
+    
+    data = []
+    for grade in grades:
+        row = []
+        for section in sections:
+            section_df = grades_analysis[grades_analysis['Section'] == section]
+            prop = (section_df['Letter Grade Post-Redemption'] == grade).mean()
+            row.append(prop)
+        data.append(row)
+
+    heatmap_df = pd.DataFrame(data, index=grades, columns=sections)
+    
+    fig = px.imshow(
+        heatmap_df,
+        color_continuous_scale='Blues',
+        title='Distribution of Letter Grades by Section',
+        labels={'x': 'Section', 'y': 'Letter Grade Post-Redemption', 'color': 'color'}
+    )
+    
+    return fig
